@@ -51,6 +51,8 @@ declare global {
 
 export default function Home() {
 
+  const [scriptAddress, setScriptAddress] = useState('')
+
   const [walletApi, setWalletApi] = useState<Cip30Wallet>()
 
   const [networkParams, setNetworkParams] = useState<NetworkParams>()
@@ -75,14 +77,11 @@ export default function Home() {
       .then(response => response.json())
       .then(params => setNetworkParams(new NetworkParams(params)))
 
-  }, [])
-
-  const compile = () => {
     const program = Program.new(contract)
     const uplcProgram = program.compile(false)
     const scriptAddress = Address.fromValidatorHash(uplcProgram.validatorHash)
-    console.log('scriptAddress: ' + scriptAddress.toBech32())
-  }
+    setScriptAddress(scriptAddress.toBech32())
+  }, [])
 
   const sendNftToScript = async () => {
 
@@ -176,20 +175,33 @@ export default function Home() {
       </Head>
       <main>
         <div>
-          <button
-            type='button'
-            onClick={() => compile()}>
-            Compile
-          </button>
+          <p>
+            <h3>Script Address: {scriptAddress}</h3>
+          </p>
         </div>
         <div>
-          <p>Lock NFT in Vault</p>
+          <p>
+            <h2>Lock NFT in Vault</h2>
+          </p>
+          <ul>
+            <li>Open Nami and select the asset's Policy ID and paste it in the appropriate field</li>
+            <li>Same for the Asse Name</li>
+            <li>Don't delete them, you'll need them to bake the withdraw transaction</li>
+            <li>Open your console to check for errors</li>
+          </ul>
           <input type={'text'} value={policyId} onChange={(event) => setPolicyId(event.target.value)} placeholder="Policy ID"></input>
           <input type={'text'} value={assetName} onChange={(event) => setAssetName(event.target.value)} placeholder="Asset Name"></input>
           <input type={'button'} value="Send" onClick={() => sendNftToScript()}></input>
         </div>
         <div>
-          <p>Withdraw NFT from Vault</p>
+          <p>
+            <h2>Withdraw NFT from Vault</h2>
+          </p>
+          <ul>
+            <li>To withdraw the assets from the vault, you need the utxo and utxo id of the contract</li>
+            <li>Use the script address at the top of the page and paste it into preview.cardanoscan.io</li>
+            <li>Open the utxo tab and fetch relevant utxos and paste them here below. Hit the withdraw button and GL.</li>
+          </ul>
           <input type={'text'} value={vaultUtxo} onChange={(event) => setVaultUtxo(event.target.value)} placeholder="utxo"></input>
           <input type={'text'} value={vaultUtxoId} onChange={(event) => setVaultUtxoId(Number(event.target.value))} placeholder="utxo index"></input>
           <input type={'button'} value="Withdraw" onClick={() => withdrawNft()}></input>
