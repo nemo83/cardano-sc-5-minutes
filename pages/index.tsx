@@ -2,10 +2,170 @@ import Head from 'next/head'
 import Image from 'next/image'
 import { Inter } from 'next/font/google'
 import styles from '@/styles/Home.module.css'
+import {
+  Address,
+  Assets,
+  Cip30Handle,
+  Cip30Wallet,
+  ConstrData,
+  Datum,
+  MintingPolicyHash,
+  NetworkParams,
+  Program,
+  Tx,
+  TxId,
+  TxOutput,
+  UTxO,
+  Value,
+  WalletHelper
+} from "@hyperionbt/helios"
+import { useEffect, useState } from 'react'
 
 const inter = Inter({ subsets: ['latin'] })
 
+const contract = `
+
+  spending vault
+
+  struct Datum {
+    pubKey: PubKeyHash
+
+    func is_valid_key(self, tx: Tx) -> Bool {
+      tx.is_signed_by(self.pubKey)
+    }
+  }
+
+  func main(datum: Datum, scriptContext: ScriptContext) -> Bool {
+      tx: Tx = scriptContext.tx;
+      datum.is_valid_key(tx)
+  }
+
+
+`
+
+declare global {
+  interface Window {
+    cardano: any;
+  }
+}
+
 export default function Home() {
+
+  const [walletApi, setWalletApi] = useState<Cip30Wallet>()
+
+  const [networkParams, setNetworkParams] = useState<NetworkParams>()
+
+  const [policyId, setPolicyId] = useState('')
+  const [assetName, setAssetName] = useState('')
+
+  const [vaultUtxo, setVaultUtxo] = useState('')
+  const [vaultUtxoId, setVaultUtxoId] = useState(0)
+
+  useEffect(() => {
+
+    (async () => {
+      const handle: Cip30Handle = await window.cardano.nami.enable()
+      const walletApi = new Cip30Wallet(handle)
+      setWalletApi(walletApi)
+      console.log('wallet initialised')
+    })()
+
+
+    fetch('https://d1t0d7c2nekuk0.cloudfront.net/preview.json')
+      .then(response => response.json())
+      .then(params => setNetworkParams(new NetworkParams(params)))
+
+  }, [])
+
+  const compile = () => {
+    const program = Program.new(contract)
+    const uplcProgram = program.compile(false)
+    const scriptAddress = Address.fromValidatorHash(uplcProgram.validatorHash)
+    console.log('scriptAddress: ' + scriptAddress.toBech32())
+  }
+
+  const sendNftToScript = async () => {
+
+    const program = Program.new(contract)
+    const uplcProgram = program.compile(false)
+    const scriptAddress = Address.fromValidatorHash(uplcProgram.validatorHash)
+
+    const mph = MintingPolicyHash.fromHex(policyId)
+    const assetNameHex = Buffer.from(assetName).toString("hex")
+    const value = new Value(BigInt(2_000_000), new Assets([
+      [mph, [[assetNameHex, BigInt(1)]]]
+    ]))
+
+    if (walletApi && networkParams) {
+
+      console.log(networkParams)
+
+      const walletHelper = new WalletHelper(walletApi)
+      const baseAddress = await walletHelper.baseAddress
+      const utxos = await walletHelper.pickUtxos(value)
+
+      const datum = new program.types.Datum(baseAddress.pubKeyHash)
+
+      const tx = await new Tx()
+        .addInputs(utxos[0])
+        .addOutput(new TxOutput(scriptAddress, value, Datum.inline(datum)))
+        .addSigner(baseAddress.pubKeyHash)
+        .finalize(networkParams, await walletHelper.changeAddress, utxos[1])
+
+      console.log('tx.dump', tx.dump())
+
+      const signatures = await walletApi.signTx(tx)
+      tx.addSignatures(signatures)
+
+      const txHash = await walletApi.submitTx(tx)
+      console.log('txHash', txHash)
+
+    }
+
+  }
+
+  const withdrawNft = async () => {
+
+    const program = Program.new(contract)
+    const uplcProgram = program.compile(false)
+    const scriptAddress = Address.fromValidatorHash(uplcProgram.validatorHash)
+
+    const mph = MintingPolicyHash.fromHex(policyId)
+    const assetNameHex = Buffer.from(assetName).toString("hex")
+    const value = new Value(BigInt(2_000_000), new Assets([
+      [mph, [[assetNameHex, BigInt(1)]]]
+    ]))
+
+    if (walletApi && networkParams && vaultUtxo) {
+
+      console.log(networkParams)
+
+      const walletHelper = new WalletHelper(walletApi)
+      const baseAddress = await walletHelper.baseAddress
+      const utxos = await walletHelper.pickUtxos(new Value(BigInt(2_000_000)))
+
+      const datum = new program.types.Datum(baseAddress.pubKeyHash)
+
+      const tx = await new Tx()
+        .addInputs(utxos[0])
+        .addInput(new UTxO(new TxId(vaultUtxo), BigInt(vaultUtxoId), new TxOutput(scriptAddress, value, Datum.inline(datum))), new ConstrData(0, []))
+        .addOutput(new TxOutput(baseAddress, value))
+        .addSigner(baseAddress.pubKeyHash)
+        .attachScript(uplcProgram)
+        .finalize(networkParams, await walletHelper.changeAddress)
+
+      console.log('tx.dump', tx.dump())
+
+      const signatures = await walletApi.signTx(tx)
+      tx.addSignatures(signatures)
+
+      const txHash = await walletApi.submitTx(tx)
+      console.log('txHash', txHash)
+
+    }
+
+  }
+
   return (
     <>
       <Head>
@@ -14,108 +174,25 @@ export default function Home() {
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
-      <main className={styles.main}>
-        <div className={styles.description}>
-          <p>
-            Get started by editing&nbsp;
-            <code className={styles.code}>pages/index.tsx</code>
-          </p>
-          <div>
-            <a
-              href="https://vercel.com?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              By{' '}
-              <Image
-                src="/vercel.svg"
-                alt="Vercel Logo"
-                className={styles.vercelLogo}
-                width={100}
-                height={24}
-                priority
-              />
-            </a>
-          </div>
+      <main>
+        <div>
+          <button
+            type='button'
+            onClick={() => compile()}>
+            Compile
+          </button>
         </div>
-
-        <div className={styles.center}>
-          <Image
-            className={styles.logo}
-            src="/next.svg"
-            alt="Next.js Logo"
-            width={180}
-            height={37}
-            priority
-          />
-          <div className={styles.thirteen}>
-            <Image
-              src="/thirteen.svg"
-              alt="13"
-              width={40}
-              height={31}
-              priority
-            />
-          </div>
+        <div>
+          <p>Lock NFT in Vault</p>
+          <input type={'text'} value={policyId} onChange={(event) => setPolicyId(event.target.value)} placeholder="Policy ID"></input>
+          <input type={'text'} value={assetName} onChange={(event) => setAssetName(event.target.value)} placeholder="Asset Name"></input>
+          <input type={'button'} value="Send" onClick={() => sendNftToScript()}></input>
         </div>
-
-        <div className={styles.grid}>
-          <a
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <h2 className={inter.className}>
-              Docs <span>-&gt;</span>
-            </h2>
-            <p className={inter.className}>
-              Find in-depth information about Next.js features and&nbsp;API.
-            </p>
-          </a>
-
-          <a
-            href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <h2 className={inter.className}>
-              Learn <span>-&gt;</span>
-            </h2>
-            <p className={inter.className}>
-              Learn about Next.js in an interactive course with&nbsp;quizzes!
-            </p>
-          </a>
-
-          <a
-            href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <h2 className={inter.className}>
-              Templates <span>-&gt;</span>
-            </h2>
-            <p className={inter.className}>
-              Discover and deploy boilerplate example Next.js&nbsp;projects.
-            </p>
-          </a>
-
-          <a
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <h2 className={inter.className}>
-              Deploy <span>-&gt;</span>
-            </h2>
-            <p className={inter.className}>
-              Instantly deploy your Next.js site to a shareable URL
-              with&nbsp;Vercel.
-            </p>
-          </a>
+        <div>
+          <p>Withdraw NFT from Vault</p>
+          <input type={'text'} value={vaultUtxo} onChange={(event) => setVaultUtxo(event.target.value)} placeholder="utxo"></input>
+          <input type={'text'} value={vaultUtxoId} onChange={(event) => setVaultUtxoId(Number(event.target.value))} placeholder="utxo index"></input>
+          <input type={'button'} value="Withdraw" onClick={() => withdrawNft()}></input>
         </div>
       </main>
     </>
