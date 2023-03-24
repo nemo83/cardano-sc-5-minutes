@@ -28,3 +28,29 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 1. npx create-next-app@latest cardano-sc-5-minutes
 2. npm i "@hyperionbt/helios"
+
+## Gotchas
+
+In this paragraph a couple of snippet of code to speed up the dev.
+
+### Accessing the Cardano object
+
+When using TypeScript this snippet is required to make editor and compiler happy
+
+```javascript
+declare global {
+  interface Window {
+    cardano: any;
+  }
+}
+```
+
+### Fetching the Network Params
+
+Cardano Network parameters are required when finalising the transaction (eg fees, collateral etc.). 
+
+```javascript
+fetch('https://d1t0d7c2nekuk0.cloudfront.net/preview.json')
+    .then(response => response.json())
+    .then(params => setNetworkParams(new NetworkParams(params)))
+```
